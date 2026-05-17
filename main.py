@@ -9,8 +9,8 @@ app.config['JSON_AS_ASCII'] = False
 # ================= VEHICLE API =================
 VEHICLE_API = "https://vehicle-chass-id.vercel.app/info?vehicle="
 
-# ================= GET CHASSIS FROM RC =================
-def get_chassis_last5(rc):
+# ================= GET FULL CHASSIS =================
+def get_chassis(rc):
     try:
         r = requests.get(VEHICLE_API + rc, timeout=20)
         data = r.json()
@@ -18,7 +18,6 @@ def get_chassis_last5(rc):
         if data.get("status") != "success":
             return None
 
-        # Try multiple possible keys
         chassis = (
             data.get("data", {}).get("vehicle_chasi_number")
             or data.get("data", {}).get("chassis")
@@ -30,16 +29,18 @@ def get_chassis_last5(rc):
         if not chassis:
             return None
 
-        # Remove spaces/symbols
         chassis = re.sub(r'[^A-Z0-9]', '', chassis.upper())
 
-        return chassis[-5:]
+        return chassis
 
     except Exception:
         return None
 
 # ================= MOBILE FETCH =================
-def get_mobile(rc, last5):
+def get_mobile(rc, full_chassis):
+
+    last5 = full_chassis[-5:]
+
     session = requests.Session()
 
     BASE = {
@@ -54,7 +55,9 @@ def get_mobile(rc, last5):
     FR = "https://vahan.parivahan.gov.in/vahanservice/vahan/ui/balanceservice/form_reschedule_fitness.xhtml"
 
     for attempt in range(2):
+
         try:
+
             r = session.get(HP, headers=BASE, timeout=25)
 
             vs = re.search(
@@ -86,7 +89,7 @@ def get_mobile(rc, last5):
                 "Referer": HP
             }
 
-            # Office Select
+            # ================= OFFICE SELECT =================
             r = session.post(HB, headers=AH, data={
                 "javax.faces.partial.ajax": "true",
                 "javax.faces.source": "fit_c_office_to",
@@ -105,7 +108,7 @@ def get_mobile(rc, last5):
             if m:
                 vs = m.group(1)
 
-            # Checkbox
+            # ================= CHECKBOX =================
             r = session.post(HB, headers=AH, data={
                 "javax.faces.partial.ajax": "true",
                 "javax.faces.source": cid,
@@ -125,7 +128,7 @@ def get_mobile(rc, last5):
             if m:
                 vs = m.group(1)
 
-            # Proceed
+            # ================= PROCEED =================
             r = session.post(HB, headers=AH, data={
                 "javax.faces.partial.ajax": "true",
                 "javax.faces.source": "proccedHomeButtonId",
@@ -144,7 +147,7 @@ def get_mobile(rc, last5):
             if m:
                 vs = m.group(1)
 
-            # Dialog
+            # ================= DIALOG =================
             dlg = "j_idt536"
 
             dm = re.search(
@@ -173,7 +176,7 @@ def get_mobile(rc, last5):
             if m:
                 vs = m.group(1)
 
-            # Login Page
+            # ================= LOGIN PAGE =================
             r = session.get(
                 LI + "?faces-redirect=true",
                 headers={**BASE, "Referer": HP},
@@ -218,7 +221,7 @@ def get_mobile(rc, last5):
                 timeout=20
             )
 
-            # Fitness Page
+            # ================= FITNESS PAGE =================
             r = session.get(
                 FR,
                 headers={**BASE, "Referer": LI + "?faces-redirect=true"},
@@ -235,7 +238,7 @@ def get_mobile(rc, last5):
 
             vs = vs.group(1)
 
-            # Validate
+            # ================= VALIDATE =================
             r = session.post(FR, headers={**AH, "Referer": FR}, data={
                 "javax.faces.partial.ajax": "true",
                 "javax.faces.source": "balanceFeesFine:validate_dtls",
@@ -248,12 +251,13 @@ def get_mobile(rc, last5):
                 "javax.faces.ViewState": vs
             }, timeout=20)
 
-            # Extract Mobile
+            # ================= MOBILE EXTRACT =================
             for p in [
                 r'id="balanceFeesFine:tf_mobile"[^>]*value="(\d{10})"',
                 r'value="(\d{10})"[^>]*id="balanceFeesFine:tf_mobile"',
                 r'tf_mobile[^>]*value="(\d{10})"'
             ]:
+
                 m = re.search(p, r.text)
 
                 if m and m.group(1)[0] in "6789":
@@ -261,6 +265,7 @@ def get_mobile(rc, last5):
                         "success": True,
                         "reg_no": rc,
                         "mobile": m.group(1),
+                        "full_chassis": full_chassis,
                         "chassis_last5": last5
                     }
 
@@ -271,6 +276,7 @@ def get_mobile(rc, last5):
                     "success": True,
                     "reg_no": rc,
                     "mobile": nums[0],
+                    "full_chassis": full_chassis,
                     "chassis_last5": last5
                 }
 
@@ -284,6 +290,7 @@ def get_mobile(rc, last5):
         "success": False,
         "reg_no": rc,
         "mobile": "Not Available",
+        "full_chassis": full_chassis,
         "chassis_last5": last5
     }
 
@@ -301,16 +308,17 @@ def mobile_info():
             "error": "RC parameter required"
         }), 400
 
-    # Auto chassis fetch
-    last5 = get_chassis_last5(rc)
+    # ================= FETCH FULL CHASSIS =================
+    full_chassis = get_chassis(rc)
 
-    if not last5:
+    if not full_chassis:
         return jsonify({
             "success": False,
             "error": "Unable to fetch chassis from vehicle API"
         }), 400
 
-    return jsonify(get_mobile(rc, last5))
+    # ================= FETCH MOBILE =================
+    return jsonify(get_mobile(rc, full_chassis))
 
 # ================= START =================
 if __name__ == "__main__":
