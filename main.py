@@ -1,11 +1,10 @@
-from fastapi import FastAPI, Query
-from fastapi.responses import JSONResponse
+from flask import Flask, request, jsonify
 import requests
 import re
 import time
-import uvicorn
 
-app = FastAPI(title="Vehicle Mobile API", version="1.0")
+app = Flask(__name__)
+app.config['JSON_AS_ASCII'] = False
 
 # ================= VEHICLE API =================
 VEHICLE_API = "https://vehicle-chass-id.vercel.app/info?vehicle="
@@ -19,10 +18,20 @@ def get_chassis_last5(rc):
         if data.get("status") != "success":
             return None
 
-        chassis = data["data"].get("vehicle_chasi_number", "")
+        # Try multiple possible keys
+        chassis = (
+            data.get("data", {}).get("vehicle_chasi_number")
+            or data.get("data", {}).get("chassis")
+            or data.get("data", {}).get("chassis_number")
+            or data.get("data", {}).get("vehicle_chassis_number")
+            or ""
+        )
 
         if not chassis:
             return None
+
+        # Remove spaces/symbols
+        chassis = re.sub(r'[^A-Z0-9]', '', chassis.upper())
 
         return chassis[-5:]
 
@@ -279,30 +288,30 @@ def get_mobile(rc, last5):
     }
 
 # ================= API ROUTE =================
-@app.get("/api/mobile")
-def mobile_info(
-    rc: str = Query(..., description="Vehicle registration number")
-):
-    rc = rc.strip().upper()
+@app.route("/api/mobile", methods=["GET"])
+def mobile_info():
+
+    rc = request.args.get("rc", "").strip().upper()
+
     rc = re.sub(r'[^A-Z0-9]', '', rc)
 
     if not rc:
-        return JSONResponse(
-            status_code=400,
-            content={"success": False, "error": "RC parameter required"}
-        )
+        return jsonify({
+            "success": False,
+            "error": "RC parameter required"
+        }), 400
 
     # Auto chassis fetch
     last5 = get_chassis_last5(rc)
 
     if not last5:
-        return JSONResponse(
-            status_code=400,
-            content={"success": False, "error": "Unable to fetch chassis from vehicle API"}
-        )
+        return jsonify({
+            "success": False,
+            "error": "Unable to fetch chassis from vehicle API"
+        }), 400
 
-    return get_mobile(rc, last5)
+    return jsonify(get_mobile(rc, last5))
 
 # ================= START =================
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=5003)
+    app.run(host="0.0.0.0", port=5000, debug=True)
