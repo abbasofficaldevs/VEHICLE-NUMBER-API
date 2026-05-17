@@ -7,10 +7,10 @@ app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
 
 # ================= VEHICLE API =================
-VEHICLE_API = "https://vehicle-chass-id.vercel.app/info?vehicle="
+VEHICLE_API = "https://prosnal-vehicle.gauravcyber0.workers.dev/?vehicle="
 
-# ================= GET FULL CHASSIS =================
-def get_chassis(rc):
+# ================= GET CHASSIS FROM RC =================
+def get_chassis_last5(rc):
     try:
         r = requests.get(VEHICLE_API + rc, timeout=20)
         data = r.json()
@@ -18,29 +18,18 @@ def get_chassis(rc):
         if data.get("status") != "success":
             return None
 
-        chassis = (
-            data.get("data", {}).get("vehicle_chasi_number")
-            or data.get("data", {}).get("chassis")
-            or data.get("data", {}).get("chassis_number")
-            or data.get("data", {}).get("vehicle_chassis_number")
-            or ""
-        )
+        chassis = data["data"].get("vehicle_chasi_number", "")
 
         if not chassis:
             return None
 
-        chassis = re.sub(r'[^A-Z0-9]', '', chassis.upper())
-
-        return chassis
+        return chassis[-5:]
 
     except Exception:
         return None
 
 # ================= MOBILE FETCH =================
-def get_mobile(rc, full_chassis):
-
-    last5 = full_chassis[-5:]
-
+def get_mobile(rc, last5):
     session = requests.Session()
 
     BASE = {
@@ -55,9 +44,7 @@ def get_mobile(rc, full_chassis):
     FR = "https://vahan.parivahan.gov.in/vahanservice/vahan/ui/balanceservice/form_reschedule_fitness.xhtml"
 
     for attempt in range(2):
-
         try:
-
             r = session.get(HP, headers=BASE, timeout=25)
 
             vs = re.search(
@@ -89,7 +76,7 @@ def get_mobile(rc, full_chassis):
                 "Referer": HP
             }
 
-            # ================= OFFICE SELECT =================
+            # Office Select
             r = session.post(HB, headers=AH, data={
                 "javax.faces.partial.ajax": "true",
                 "javax.faces.source": "fit_c_office_to",
@@ -108,7 +95,7 @@ def get_mobile(rc, full_chassis):
             if m:
                 vs = m.group(1)
 
-            # ================= CHECKBOX =================
+            # Checkbox
             r = session.post(HB, headers=AH, data={
                 "javax.faces.partial.ajax": "true",
                 "javax.faces.source": cid,
@@ -128,7 +115,7 @@ def get_mobile(rc, full_chassis):
             if m:
                 vs = m.group(1)
 
-            # ================= PROCEED =================
+            # Proceed
             r = session.post(HB, headers=AH, data={
                 "javax.faces.partial.ajax": "true",
                 "javax.faces.source": "proccedHomeButtonId",
@@ -147,7 +134,7 @@ def get_mobile(rc, full_chassis):
             if m:
                 vs = m.group(1)
 
-            # ================= DIALOG =================
+            # Dialog
             dlg = "j_idt536"
 
             dm = re.search(
@@ -176,7 +163,7 @@ def get_mobile(rc, full_chassis):
             if m:
                 vs = m.group(1)
 
-            # ================= LOGIN PAGE =================
+            # Login Page
             r = session.get(
                 LI + "?faces-redirect=true",
                 headers={**BASE, "Referer": HP},
@@ -221,7 +208,7 @@ def get_mobile(rc, full_chassis):
                 timeout=20
             )
 
-            # ================= FITNESS PAGE =================
+            # Fitness Page
             r = session.get(
                 FR,
                 headers={**BASE, "Referer": LI + "?faces-redirect=true"},
@@ -238,7 +225,7 @@ def get_mobile(rc, full_chassis):
 
             vs = vs.group(1)
 
-            # ================= VALIDATE =================
+            # Validate
             r = session.post(FR, headers={**AH, "Referer": FR}, data={
                 "javax.faces.partial.ajax": "true",
                 "javax.faces.source": "balanceFeesFine:validate_dtls",
@@ -251,13 +238,12 @@ def get_mobile(rc, full_chassis):
                 "javax.faces.ViewState": vs
             }, timeout=20)
 
-            # ================= MOBILE EXTRACT =================
+            # Extract Mobile
             for p in [
                 r'id="balanceFeesFine:tf_mobile"[^>]*value="(\d{10})"',
                 r'value="(\d{10})"[^>]*id="balanceFeesFine:tf_mobile"',
                 r'tf_mobile[^>]*value="(\d{10})"'
             ]:
-
                 m = re.search(p, r.text)
 
                 if m and m.group(1)[0] in "6789":
@@ -265,7 +251,6 @@ def get_mobile(rc, full_chassis):
                         "success": True,
                         "reg_no": rc,
                         "mobile": m.group(1),
-                        "full_chassis": full_chassis,
                         "chassis_last5": last5
                     }
 
@@ -276,7 +261,6 @@ def get_mobile(rc, full_chassis):
                     "success": True,
                     "reg_no": rc,
                     "mobile": nums[0],
-                    "full_chassis": full_chassis,
                     "chassis_last5": last5
                 }
 
@@ -290,7 +274,6 @@ def get_mobile(rc, full_chassis):
         "success": False,
         "reg_no": rc,
         "mobile": "Not Available",
-        "full_chassis": full_chassis,
         "chassis_last5": last5
     }
 
@@ -308,18 +291,17 @@ def mobile_info():
             "error": "RC parameter required"
         }), 400
 
-    # ================= FETCH FULL CHASSIS =================
-    full_chassis = get_chassis(rc)
+    # Auto chassis fetch
+    last5 = get_chassis_last5(rc)
 
-    if not full_chassis:
+    if not last5:
         return jsonify({
             "success": False,
             "error": "Unable to fetch chassis from vehicle API"
         }), 400
 
-    # ================= FETCH MOBILE =================
-    return jsonify(get_mobile(rc, full_chassis))
+    return jsonify(get_mobile(rc, last5))
 
 # ================= START =================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5003, debug=True)
