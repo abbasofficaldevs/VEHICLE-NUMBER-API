@@ -1,9 +1,15 @@
-version: '3'
-
-services:
-  vehicle-api:
-    build: .
-    container_name: vehicle-api
-    ports:
-      - "5000:5000"
-    restart: always
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "app.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "app.py"
+    }
+  ]
+}
