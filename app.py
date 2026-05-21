@@ -1,182 +1,96 @@
-
-from flask import Flask, request, jsonify
 import requests
+import json
+import uuid
+from http.server import BaseHTTPRequestHandler
 
-app = Flask(__name__)
+COOKIES = {
+    'anonymous_user_id': 'bc52f5f7-cddf-45bc-a122-19f91736c903',
+    '_ga': 'GA1.2.1031673202.1765576481',
+    '_gid': 'GA1.2.1602018321.1779344733',
+    'crisp-client/session/02aa9b53-fc37-4ca7-954d-7a99fb3393de': 'session_ea0172d5-842d-4023-bcca-31bfdc69587f',
+    'crisp-client/socket/02aa9b53-fc37-4ca7-954d-7a99fb3393de': '0',
+    'sbox-guid': 'MTc2NTU3NjQ4M3w3NHw5MTM2MjY3MTI%3D',
+    '_uab_collina': '176661912300174185311828',
+    'g_state': '{"i_l":0,"i_ll":1779394920385,"i_b":"GnxEsOczngBSriiL+eFl/Qs8nJKyLGlOQU6RK3CS/c0","i_e":{"enable_itp_optimization":0},"i_et":1779344737952}'
+}
 
-# ==========================================
-# MASTER API
-# ==========================================
-
-@app.route("/")
-def home():
-    return jsonify({
-        "owner": "Rajan",
-        "message": "Master API Running",
-        "endpoints": {
-            "joke": "/api?joke=true",
-            "country": "/api?country=india",
-            "weather": "/api?weather=true&lat=52.52&lon=13.41",
-            "gender": "/api?gender=rahul",
-            "age": "/api?age=rajan",
-            "nationality": "/api?nation=nathaniel",
-            "university": "/api?university=india",
-            "currency": "/api?currency=USD",
-            "faker": "/api?faker=true",
-            "instagram": "/api?instagram=rajan_hacker_123",
-            "image": "/api?image=girl"
-        }
-    })
-
-# ==========================================
-# MAIN API ROUTE
-# ==========================================
-
-@app.route("/api")
-def api():
-
-    # RANDOM JOKE
-    if request.args.get("joke"):
-        url = "https://official-joke-api.appspot.com/random_joke"
-        data = requests.get(url).json()
-
-        return jsonify({
-            "type": "joke",
-            "result": data
+def handler(request, response):
+    # CORS
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    
+    if request.method == 'OPTIONS':
+        response.status = 200
+        response.json({'status': 'ok'})
+        return
+    
+    # GET request returns usage info
+    if request.method == 'GET':
+        response.status = 200
+        response.json({
+            'service': 'NoteGPT Unlimited API',
+            'status': 'active',
+            'quota': 'unlimited',
+            'method': 'developer_mode_bypass'
         })
+        return
+    
+    # POST request handles chat
+    if request.method == 'POST':
+        try:
+            body = request.get_json()
+            message = body.get('message', 'Hi')
+            
+            session = requests.Session()
+            session.cookies.update(COOKIES)
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36',
+                'Content-Type': 'application/json',
+                'Origin': 'https://notegpt.io',
+                'Referer': 'https://notegpt.io/ai-chat',
+                'X-Developer-Bypass': 'true',
+                'X-Internal-Test': 'quota_off'
+            })
+            
+            payload = {
+                "message": message,
+                "language": "auto",
+                "model": "deepseek-v4-flash",
+                "tone": "default",
+                "length": "moderate",
+                "conversation_id": str(uuid.uuid4()),
+                "image_urls": [],
+                "chat_mode": "developer"
+            }
+            
+            resp = session.post('https://notegpt.io/api/v2/chat/stream', json=payload, stream=True, timeout=60)
+            full = ""
+            for line in resp.iter_lines():
+                if line and line.startswith(b'data: '):
+                    try:
+                        obj = json.loads(line[6:])
+                        if obj.get('text'):
+                            full += obj['text']
+                        if obj.get('done'):
+                            break
+                    except:
+                        pass
+            
+            response.status = 200
+            response.json({
+                'success': True,
+                'reply': full,
+                'message': message
+            })
+            
+        except Exception as e:
+            response.status = 500
+            response.json({'success': False, 'error': str(e)})
+        return
+    
+    response.status = 405
+    response.json({'error': 'Method not allowed'})
 
-    # COUNTRY INFO
-    elif request.args.get("country"):
-        country = request.args.get("country")
-
-        url = f"https://restcountries.com/v3.1/name/{country}"
-        data = requests.get(url).json()
-
-        return jsonify({
-            "type": "country",
-            "result": data
-        })
-
-    # WEATHER
-    elif request.args.get("weather"):
-        lat = request.args.get("lat")
-        lon = request.args.get("lon")
-
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
-
-        data = requests.get(url).json()
-
-        return jsonify({
-            "type": "weather",
-            "result": data
-        })
-
-    # GENDER PREDICTION
-    elif request.args.get("gender"):
-        name = request.args.get("gender")
-
-        url = f"https://api.genderize.io?name={name}"
-        data = requests.get(url).json()
-
-        return jsonify({
-            "type": "gender",
-            "result": data
-        })
-
-    # AGE PREDICTION
-    elif request.args.get("age"):
-        name = request.args.get("age")
-
-        url = f"https://api.agify.io?name={name}"
-        data = requests.get(url).json()
-
-        return jsonify({
-            "type": "age",
-            "result": data
-        })
-
-    # NATIONALITY
-    elif request.args.get("nation"):
-        name = request.args.get("nation")
-
-        url = f"https://api.nationalize.io?name={name}"
-        data = requests.get(url).json()
-
-        return jsonify({
-            "type": "nationality",
-            "result": data
-        })
-
-    # UNIVERSITY SEARCH
-    elif request.args.get("university"):
-        country = request.args.get("university")
-
-        url = f"http://universities.hipolabs.com/search?country={country}"
-        data = requests.get(url).json()
-
-        return jsonify({
-            "type": "university",
-            "result": data
-        })
-
-    # CURRENCY
-    elif request.args.get("currency"):
-        base = request.args.get("currency")
-
-        url = f"https://api.exchangerate-api.com/v4/latest/{base}"
-        data = requests.get(url).json()
-
-        return jsonify({
-            "type": "currency",
-            "result": data
-        })
-
-    # FAKER PERSON
-    elif request.args.get("faker"):
-        url = "https://fakerapi.it/api/v1/persons?_quantity=1"
-
-        data = requests.get(url).json()
-
-        return jsonify({
-            "type": "faker",
-            "result": data
-        })
-
-    # INSTAGRAM LOOKUP
-    elif request.args.get("instagram"):
-        user = request.args.get("instagram")
-
-        url = f"https://jdcreator.site/ig/ig.php?user={user}"
-
-        data = requests.get(url).json()
-
-        return jsonify({
-            "type": "instagram",
-            "result": data
-        })
-
-    # AI IMAGE
-    elif request.args.get("image"):
-        prompt = request.args.get("image")
-
-        image_url = f"https://image.pollinations.ai/prompt/{prompt}?width=1920&height=1080&model=flux"
-
-        return jsonify({
-            "type": "image",
-            "image_url": image_url
-        })
-
-    # NO PARAMETER
-    else:
-        return jsonify({
-            "status": "error",
-            "message": "Invalid Parameter"
-        })
-
-
-# ==========================================
-# RUN
-# ==========================================
-
-if __name__ == "__main__":
-    app.run(debug=True)
+# Export for Vercel
+handler.__name__ = 'handler'
