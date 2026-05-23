@@ -1,14 +1,19 @@
 {
-  "functions": {
-    "app.py": {
-      "maxDuration": 60,
-      "memory": 1024
+  "version": 2,
+  "builds": [
+    {
+      "src": "app.py",
+      "use": "@vercel/python"
     }
-  },
+  ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/app.py"
+      "dest": "app.py"
     }
-  ]
+  ],
+  "env": {
+    "FLASK_ENV": "production",
+    "PYTHONPATH": "/vercel/path0"
+  }
 }
