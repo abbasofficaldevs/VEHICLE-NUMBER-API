@@ -3,7 +3,7 @@ import requests
 
 app = Flask(__name__)
 
-API_URL = "https://num-to-info.sauravsingh2111.workers.dev/lookup/"
+API_URL = "https://abhaykumar.xo.je/api/proxy.php?tool=number_info&query="
 
 @app.route("/lookup", methods=["GET"])
 def lookup():
@@ -19,10 +19,10 @@ def lookup():
         response = requests.get(f"{API_URL}{number}", timeout=20)
         data = response.json()
 
-        results = data.get("data", [])
+        result = data.get("data", {})
 
         # Not found
-        if isinstance(results, dict) and results.get("message") == "not found":
+        if result.get("Status") == "No information found":
             return jsonify({
                 "status": "failed",
                 "message": "Data not found",
@@ -34,19 +34,17 @@ def lookup():
                 ]
             })
 
-        # Only 5 records
-        cleaned = []
-        for item in results[:5]:
-            cleaned.append({
-                "mobile": item.get("mobile"),
-                "name": item.get("name"),
-                "father_name": item.get("fname"),
-                "address": item.get("address"),
-                "alternate": item.get("alt"),
-                "circle": item.get("circle"),
-                "id": item.get("id"),
-                "email": item.get("email")
-            })
+        # Same old structure
+        cleaned = [{
+            "mobile": result.get("Mobile Number"),
+            "name": result.get("Name"),
+            "father_name": result.get("Father Name"),
+            "address": result.get("Address"),
+            "alternate": result.get("Alternate Number"),
+            "circle": result.get("Circle"),
+            "id": result.get("Aadhaar"),
+            "email": None
+        }]
 
         return jsonify({
             "status": "success",
