@@ -18,26 +18,36 @@ def lookup():
     number = request.args.get("num")
 
     if not number:
-        return jsonify({
-            "status": "failed",
-            "message": "num parameter required"
-        })
+        return jsonify({"status": "failed", "message": "num parameter required"})
 
     try:
         r = requests.get(
             API_URL,
-            params={
-                "tool": "number_info",
-                "query": number
-            },
+            params={"tool": "number_info", "query": number},
             headers=HEADERS,
             timeout=30
         )
 
-        data = r.json()
+        # STEP 1: check empty response
+        if not r.text or r.text.strip() == "":
+            return jsonify({
+                "status": "error",
+                "message": "Empty response from API"
+            })
+
+        # STEP 2: safe JSON parse
+        try:
+            data = r.json()
+        except Exception:
+            return jsonify({
+                "status": "error",
+                "message": "Invalid JSON response",
+                "raw": r.text[:200]
+            })
+
         result = data.get("data", {})
 
-        # not found case
+        # STEP 3: not found handling
         if result.get("ℹ️ Status") == "No information found":
             return jsonify({
                 "status": "failed",
@@ -45,7 +55,7 @@ def lookup():
                 "records": []
             })
 
-        # old format response
+        # STEP 4: old format response
         cleaned = [{
             "mobile": result.get("📱 Mobile Number"),
             "name": result.get("👤 Name"),
@@ -64,12 +74,6 @@ def lookup():
         })
 
     except requests.exceptions.RequestException as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        })
-
-    except Exception as e:
         return jsonify({
             "status": "error",
             "message": str(e)
