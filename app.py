@@ -1,72 +1,99 @@
-import requests
 from flask import Flask, jsonify, request
+import requests
 
 app = Flask(__name__)
 
-API_URL = "https://abhaykumar.xo.je/api/proxy.php"
+API_URL = "https://rootx-osint.in/"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Referer": "https://abhaykumar.xo.je/home.php",
-    "Connection": "keep-alive"
+    "User-Agent": "Mozilla/5.0"
 }
-
-# IMPORTANT: keep session + cookie
-session = requests.Session()
-session.headers.update(HEADERS)
-
-session.cookies.update({
-    "PHPSESSID": "741cc4419e1decac185fd66caa78f1a2",
-    "__test": "91b3585db080312acaa505b0768cf85c"
-})
 
 @app.route("/lookup", methods=["GET"])
 def lookup():
     number = request.args.get("num")
 
     if not number:
-        return jsonify({"status": "failed", "message": "num required"})
+        return jsonify({
+            "status": "failed",
+            "message": "num parameter required"
+        })
 
     try:
-        r = session.get(
+        r = requests.get(
             API_URL,
-            params={"tool": "number_info", "query": number},
+            params={
+                "type": "num",
+                "key": "@abbas_devs",
+                "query": number
+            },
+            headers=HEADERS,
             timeout=30
         )
 
-        text = r.text
-
-        # block HTML challenge
-        if "<html" in text.lower() or "aes.js" in text:
-            return jsonify({
-                "status": "error",
-                "message": "Blocked by anti-bot page (HTML response received)"
-            })
-
         data = r.json()
-        result = data.get("data", {})
 
-        if result.get("ℹ️ Status") == "No information found":
+        # default meta
+        meta = {}
+
+        # error response
+        if isinstance(data, dict) and data.get("status") == "error":
+            meta = data
             return jsonify({
                 "status": "failed",
-                "message": "Data not found",
-                "records": []
+                "message": "no data found",
+                "records": [],
+                "req_left": meta.get("req_left"),
+                "req_total": meta.get("req_total"),
+                "expiry": meta.get("expiry"),
+                "developer": meta.get("developer")
             })
+
+        records = []
+        meta_found = {}
+
+        # parse response
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict):
+
+                    # meta detect anywhere
+                    if "req_left" in item or "req_total" in item:
+                        meta_found = item
+
+                    # data records
+                    elif "MOBILE" in item:
+                        records.append({
+                            "mobile": item.get("MOBILE"),
+                            "name": item.get("NAME"),
+                            "father_name": item.get("fname"),
+                            "address": item.get("ADDRESS"),
+                            "alternate": item.get("alt"),
+                            "circle": item.get("circle"),
+                            "id": item.get("id")
+                        })
+
+        # max 5 records
+        records = records[:5]
+
+        # fallback meta if not found
+        meta = meta_found if meta_found else {}
 
         return jsonify({
             "status": "success",
-            "records": [{
-                "mobile": result.get("📱 Mobile Number"),
-                "name": result.get("👤 Name"),
-                "father_name": result.get("👨 Father Name"),
-                "address": result.get("📍 Address"),
-                "alternate": result.get("📞 Alternate Number"),
-                "circle": result.get("📡 Circle"),
-                "id": result.get("🪪 Aadhaar"),
-                "email": None
-            }]
+            "total_records": len(records),
+            "records": records,
+
+            "req_left": meta.get("req_left"),
+            "req_total": meta.get("req_total"),
+            "expiry": meta.get("expiry"),
+            "developer": meta.get("developer")
+        })
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
         })
 
     except Exception as e:
@@ -75,5 +102,6 @@ def lookup():
             "message": str(e)
         })
 
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, host="0.0.0.0", port=5000)
