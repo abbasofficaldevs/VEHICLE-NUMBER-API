@@ -1,5 +1,5 @@
-from flask import Flask, jsonify, request
 import requests
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
@@ -13,41 +13,41 @@ HEADERS = {
     "Connection": "keep-alive"
 }
 
+# IMPORTANT: keep session + cookie
+session = requests.Session()
+session.headers.update(HEADERS)
+
+session.cookies.update({
+    "PHPSESSID": "741cc4419e1decac185fd66caa78f1a2",
+    "__test": "91b3585db080312acaa505b0768cf85c"
+})
+
 @app.route("/lookup", methods=["GET"])
 def lookup():
     number = request.args.get("num")
 
     if not number:
-        return jsonify({"status": "failed", "message": "num parameter required"})
+        return jsonify({"status": "failed", "message": "num required"})
 
     try:
-        r = requests.get(
+        r = session.get(
             API_URL,
             params={"tool": "number_info", "query": number},
-            headers=HEADERS,
             timeout=30
         )
 
-        # STEP 1: check empty response
-        if not r.text or r.text.strip() == "":
+        text = r.text
+
+        # block HTML challenge
+        if "<html" in text.lower() or "aes.js" in text:
             return jsonify({
                 "status": "error",
-                "message": "Empty response from API"
+                "message": "Blocked by anti-bot page (HTML response received)"
             })
 
-        # STEP 2: safe JSON parse
-        try:
-            data = r.json()
-        except Exception:
-            return jsonify({
-                "status": "error",
-                "message": "Invalid JSON response",
-                "raw": r.text[:200]
-            })
-
+        data = r.json()
         result = data.get("data", {})
 
-        # STEP 3: not found handling
         if result.get("ℹ️ Status") == "No information found":
             return jsonify({
                 "status": "failed",
@@ -55,30 +55,25 @@ def lookup():
                 "records": []
             })
 
-        # STEP 4: old format response
-        cleaned = [{
-            "mobile": result.get("📱 Mobile Number"),
-            "name": result.get("👤 Name"),
-            "father_name": result.get("👨 Father Name"),
-            "address": result.get("📍 Address"),
-            "alternate": result.get("📞 Alternate Number"),
-            "circle": result.get("📡 Circle"),
-            "id": result.get("🪪 Aadhaar"),
-            "email": None
-        }]
-
         return jsonify({
             "status": "success",
-            "total_records": len(cleaned),
-            "records": cleaned
+            "records": [{
+                "mobile": result.get("📱 Mobile Number"),
+                "name": result.get("👤 Name"),
+                "father_name": result.get("👨 Father Name"),
+                "address": result.get("📍 Address"),
+                "alternate": result.get("📞 Alternate Number"),
+                "circle": result.get("📡 Circle"),
+                "id": result.get("🪪 Aadhaar"),
+                "email": None
+            }]
         })
 
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         return jsonify({
             "status": "error",
             "message": str(e)
         })
-
 
 if __name__ == "__main__":
     app.run(debug=True)
