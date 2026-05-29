@@ -3,7 +3,13 @@ import requests
 
 app = Flask(__name__)
 
-API_URL = "https://abhaykumar.xo.je/api/proxy.php?tool=number_info&query="
+API_URL = "https://abhaykumar.xo.je/api/proxy.php"
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Accept": "application/json,text/plain,*/*",
+    "Connection": "keep-alive"
+}
 
 @app.route("/lookup", methods=["GET"])
 def lookup():
@@ -16,13 +22,35 @@ def lookup():
         })
 
     try:
-        response = requests.get(f"{API_URL}{number}", timeout=20)
-        data = response.json()
+        session = requests.Session()
 
+        response = session.get(
+            API_URL,
+            params={
+                "tool": "number_info",
+                "query": number
+            },
+            headers=HEADERS,
+            timeout=30
+        )
+
+        data = response.json()
         result = data.get("data", {})
 
+        # Convert emoji keys to normal keys
+        fixed = {
+            "Name": result.get("👤 Name"),
+            "Father Name": result.get("👨 Father Name"),
+            "Mobile Number": result.get("📱 Mobile Number"),
+            "Aadhaar": result.get("🪪 Aadhaar"),
+            "Address": result.get("📍 Address"),
+            "Alternate Number": result.get("📞 Alternate Number"),
+            "Circle": result.get("📡 Circle"),
+            "Status": result.get("ℹ️ Status")
+        }
+
         # Not found
-        if result.get("Status") == "No information found":
+        if fixed.get("Status") == "No information found":
             return jsonify({
                 "status": "failed",
                 "message": "Data not found",
@@ -34,15 +62,15 @@ def lookup():
                 ]
             })
 
-        # Same old structure
+        # Old response format
         cleaned = [{
-            "mobile": result.get("Mobile Number"),
-            "name": result.get("Name"),
-            "father_name": result.get("Father Name"),
-            "address": result.get("Address"),
-            "alternate": result.get("Alternate Number"),
-            "circle": result.get("Circle"),
-            "id": result.get("Aadhaar"),
+            "mobile": fixed.get("Mobile Number"),
+            "name": fixed.get("Name"),
+            "father_name": fixed.get("Father Name"),
+            "address": fixed.get("Address"),
+            "alternate": fixed.get("Alternate Number"),
+            "circle": fixed.get("Circle"),
+            "id": fixed.get("Aadhaar"),
             "email": None
         }]
 
@@ -55,6 +83,12 @@ def lookup():
                 "Only for educational testing purpose",
                 "We do not promote any illegal activities"
             ]
+        })
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Request failed: {str(e)}"
         })
 
     except Exception as e:
