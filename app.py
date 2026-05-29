@@ -6,8 +6,8 @@ app = Flask(__name__)
 API_URL = "https://abhaykumar.xo.je/api/proxy.php"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0",
-    "Accept": "application/json,text/plain,*/*",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "Accept": "application/json",
     "Connection": "keep-alive"
 }
 
@@ -16,73 +16,56 @@ def lookup():
     number = request.args.get("num")
 
     if not number:
-        return jsonify({
-            "status": "failed",
-            "message": "num parameter required"
-        })
+        return jsonify({"status": "failed", "message": "num parameter required"})
 
     try:
-        session = requests.Session()
-
-        response = session.get(
+        r = requests.get(
             API_URL,
-            params={
-                "tool": "number_info",
-                "query": number
-            },
+            params={"tool": "number_info", "query": number},
             headers=HEADERS,
             timeout=30
         )
 
-        data = response.json()
+        # IMPORTANT: handle empty response
+        if not r.text or r.text.strip() == "":
+            return jsonify({
+                "status": "error",
+                "message": "Empty response from API"
+            })
+
+        try:
+            data = r.json()
+        except Exception:
+            return jsonify({
+                "status": "error",
+                "message": "Invalid JSON from API",
+                "raw": r.text[:200]
+            })
+
         result = data.get("data", {})
 
-        # Convert emoji keys to normal keys
-        fixed = {
-            "Name": result.get("👤 Name"),
-            "Father Name": result.get("👨 Father Name"),
-            "Mobile Number": result.get("📱 Mobile Number"),
-            "Aadhaar": result.get("🪪 Aadhaar"),
-            "Address": result.get("📍 Address"),
-            "Alternate Number": result.get("📞 Alternate Number"),
-            "Circle": result.get("📡 Circle"),
-            "Status": result.get("ℹ️ Status")
-        }
-
-        # Not found
-        if fixed.get("Status") == "No information found":
+        if result.get("ℹ️ Status") == "No information found":
             return jsonify({
                 "status": "failed",
                 "message": "Data not found",
-                "records": [],
-                "note": [
-                    "Credit SkillsQuark Team",
-                    "Only for educational testing purpose",
-                    "We do not promote any illegal activities"
-                ]
+                "records": []
             })
 
-        # Old response format
         cleaned = [{
-            "mobile": fixed.get("Mobile Number"),
-            "name": fixed.get("Name"),
-            "father_name": fixed.get("Father Name"),
-            "address": fixed.get("Address"),
-            "alternate": fixed.get("Alternate Number"),
-            "circle": fixed.get("Circle"),
-            "id": fixed.get("Aadhaar"),
+            "mobile": result.get("📱 Mobile Number"),
+            "name": result.get("👤 Name"),
+            "father_name": result.get("👨 Father Name"),
+            "address": result.get("📍 Address"),
+            "alternate": result.get("📞 Alternate Number"),
+            "circle": result.get("📡 Circle"),
+            "id": result.get("🪪 Aadhaar"),
             "email": None
         }]
 
         return jsonify({
             "status": "success",
             "total_records": len(cleaned),
-            "records": cleaned,
-            "note": [
-                "Credit SkillsQuark Team",
-                "Only for educational testing purpose",
-                "We do not promote any illegal activities"
-            ]
+            "records": cleaned
         })
 
     except requests.exceptions.RequestException as e:
@@ -91,11 +74,5 @@ def lookup():
             "message": f"Request failed: {str(e)}"
         })
 
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        })
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(debug=True)
