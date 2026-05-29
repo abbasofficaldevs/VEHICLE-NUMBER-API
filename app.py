@@ -33,61 +33,36 @@ def lookup():
 
         data = r.json()
 
-        # default meta
-        meta = {}
-
-        # error response
+        # error case
         if isinstance(data, dict) and data.get("status") == "error":
-            meta = data
             return jsonify({
                 "status": "failed",
                 "message": "no data found",
-                "records": [],
-                "req_left": meta.get("req_left"),
-                "req_total": meta.get("req_total"),
-                "expiry": meta.get("expiry"),
-                "developer": meta.get("developer")
+                "records": []
             })
 
         records = []
-        meta_found = {}
 
-        # parse response
         if isinstance(data, list):
             for item in data:
-                if isinstance(item, dict):
+                if isinstance(item, dict) and "MOBILE" in item:
+                    records.append({
+                        "mobile": item.get("MOBILE"),
+                        "name": item.get("NAME"),
+                        "father_name": item.get("fname"),
+                        "address": item.get("ADDRESS"),
+                        "alternate": item.get("alt"),
+                        "circle": item.get("circle"),
+                        "id": item.get("id")
+                    })
 
-                    # meta detect anywhere
-                    if "req_left" in item or "req_total" in item:
-                        meta_found = item
-
-                    # data records
-                    elif "MOBILE" in item:
-                        records.append({
-                            "mobile": item.get("MOBILE"),
-                            "name": item.get("NAME"),
-                            "father_name": item.get("fname"),
-                            "address": item.get("ADDRESS"),
-                            "alternate": item.get("alt"),
-                            "circle": item.get("circle"),
-                            "id": item.get("id")
-                        })
-
-        # max 5 records
+        # max 5 records only
         records = records[:5]
-
-        # fallback meta if not found
-        meta = meta_found if meta_found else {}
 
         return jsonify({
             "status": "success",
             "total_records": len(records),
-            "records": records,
-
-            "req_left": meta.get("req_left"),
-            "req_total": meta.get("req_total"),
-            "expiry": meta.get("expiry"),
-            "developer": meta.get("developer")
+            "records": records
         })
 
     except requests.exceptions.RequestException as e:
